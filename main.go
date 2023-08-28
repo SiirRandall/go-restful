@@ -14,16 +14,102 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+type ScrollTextView struct {
+	*tview.TextView
+}
+
+func NewScrollTextView() *ScrollTextView {
+	tv := tview.NewTextView()
+	tv.SetScrollable(true)
+	return &ScrollTextView{tv}
+}
+
+func (stv *ScrollTextView) Draw(screen tcell.Screen) {
+	stv.TextView.Draw(screen)
+
+	x, y, width, height := stv.GetInnerRect()
+	totalRows := strings.Count(stv.GetText(true), "\n")
+
+	if totalRows > height {
+		scrollPosition, _ := stv.GetScrollOffset()
+		percentageScrolled := float64(scrollPosition) / float64(totalRows-height+1)
+		scrollbarHeight := max(
+			1,
+			int(float64(height-2)*(float64(height-2)/float64(totalRows))),
+		) // -2 to account for arrows
+		scrollbarY := 1 + int(
+			percentageScrolled*float64(height-2-scrollbarHeight),
+		) // +1 to start below the up arrow
+
+		// Scrollbar position
+		scrollbarX := x + width - 1
+
+		// Draw the scrollbar background
+		for i := 1; i < height-1; i++ { // Start and end one line inside to account for arrows
+			screen.SetContent(
+				scrollbarX,
+				y+i,
+				' ',
+				nil,
+				tcell.StyleDefault.Background(tcell.ColorDarkGrey),
+			)
+		}
+
+		// Draw the scrollbar thumb
+		for i := 0; i < scrollbarHeight; i++ {
+			screen.SetContent(
+				scrollbarX,
+				y+scrollbarY+i,
+				' ',
+				nil,
+				tcell.StyleDefault.Background(tcell.ColorWhite),
+			)
+		}
+
+		// Draw arrows using Unicode
+		screen.SetContent(
+			scrollbarX,
+			y,
+			'↑',
+			nil,
+			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDarkGrey),
+		)
+		screen.SetContent(
+			scrollbarX,
+			y+height-1,
+			'↓',
+			nil,
+			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDarkGrey),
+		)
+	}
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// ... rest of your code ...
+
 func main() {
 	app := tview.NewApplication()
 
 	// Initialize the textView.
-	textView := tview.NewTextView()
+	// textView := tview.NewTextView()
+	// textView.SetDynamicColors(true)
+	// textView.SetBorder(true)
+	// textView.SetTitle("JSON Viewer")
+	// textView.SetScrollable(true)
+	// textView.SetBorderPadding(0, 0, 1, 1)
+	// textView.SetScrollBar(true)
+	// Initialize the logView.
+
+	textView := NewScrollTextView()
 	textView.SetDynamicColors(true)
 	textView.SetBorder(true)
 	textView.SetTitle("JSON Viewer")
-
-	// Initialize the logView.
 
 	logView := tview.NewTextView()
 	logView.SetDynamicColors(true)
@@ -48,29 +134,7 @@ func main() {
 
 	app.EnableMouse(true)
 
-	//   buttonPanel := tview.NewForm().
-	//     AddButton("Send", func() {
-	//         // Your existing Send button functionality...
-	//     }).
-	//     AddButton("Quit", func() {
-	//         app.Stop()
-	//     })
-	//
-	// urlAndButtons := tview.NewFlex().
-	//     AddItem(urlForm, 0, 2, true).
-	//     AddItem(buttonPanel, 0, 1, false)
-
-	detailsForm = tview.NewForm().
-		AddDropDown("Method", []string{"GET", "POST", "PUT", "DELETE"}, 0, nil).
-		AddInputField("Headers", "", 50, nil, nil).
-		AddInputField("Body", "", 50, nil, nil)
-	detailsForm.SetBorder(true).SetTitle("Request Details")
-	// Initialize the form after logView, so we can use logView in the button's function.
-	form = tview.NewForm().
-		// /	AddInputField("URL", "https://jsonplaceholder.typicode.com/posts", 100, nil, nil).
-
-		// Create two new input fields for the `Headers` and `Body`.
-
+	buttonPanel := tview.NewForm().
 		AddButton("Send", func() {
 			url := urlForm.GetFormItem(0).(*tview.InputField).GetText()
 			_, methodText := detailsForm.GetFormItem(0).(*tview.DropDown).GetCurrentOption()
@@ -158,6 +222,26 @@ func main() {
 			app.Stop()
 		})
 
+	methodbox := tview.NewForm().
+		AddDropDown("", []string{"GET", "POST", "PUT", "DELETE"}, 0, nil)
+
+	urlAndButtons := tview.NewFlex().
+		AddItem(methodbox, 9, 1, false).
+		AddItem(urlForm, 0, 4, true).
+		AddItem(buttonPanel, 0, 1, false)
+
+	detailsForm = tview.NewForm().
+		AddDropDown("Method", []string{"GET", "POST", "PUT", "DELETE"}, 0, nil).
+		AddInputField("Headers", "", 50, nil, nil).
+		AddInputField("Body", "", 50, nil, nil)
+	detailsForm.SetBorder(true).SetTitle("Request Details")
+	// Initialize the form after logView, so we can use logView in the button's function.
+	form = tview.NewForm()
+	form.SetBorder(true).SetTitle("Details")
+	// /	AddInputField("URL", "https://jsonplaceholder.typicode.com/posts", 100, nil, nil).
+
+	// Create two new input fields for the `Headers` and `Body`.
+
 	textView.SetMouseCapture(
 		func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
 			// Check if it's a left button click
@@ -185,7 +269,8 @@ func main() {
 	// 	//		AddItem(logView, 2, 0, 1, 3, 0, 0, false)      // Spanning 3 columns for the logViewi
 	grid := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(urlForm, 3, 1, true).
+		//		AddItem(urlForm, 3, 1, true).
+		AddItem(urlAndButtons, 3, 1, true).
 		AddItem(tview.NewFlex().
 			AddItem(detailsForm, 35, 1, false).
 			AddItem(textView, 0, 1, false).
