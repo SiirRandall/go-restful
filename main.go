@@ -37,27 +37,28 @@ func main() {
 	detailsView.SetBorder(false)
 	detailsView.SetTitle("Details")
 
-	// window1 := tview.NewTextView().
-	// 	SetDynamicColors(true).
-	// 	SetScrollable(true).
-	// 	SetBorder(true).
-	// 	SetTitle("Window 1")
-	//
-	// window2 := tview.NewTextView().
-	// 	SetDynamicColors(true).
-	// 	SetScrollable(true).
-	// 	SetBorder(true).
-	// 	SetTitle("Window 2")
-
 	urlForm := tview.NewForm().
 		AddInputField("URL", "https://jsonplaceholder.typicode.com/posts", 100, nil, nil)
 	urlForm.SetBorder(false).SetTitle("URL")
 
 	var form *tview.Form
 	var detailsForm *tview.Form
+	isVisible := false
 	//	logVisible := false
 
 	app.EnableMouse(true)
+
+	//   buttonPanel := tview.NewForm().
+	//     AddButton("Send", func() {
+	//         // Your existing Send button functionality...
+	//     }).
+	//     AddButton("Quit", func() {
+	//         app.Stop()
+	//     })
+	//
+	// urlAndButtons := tview.NewFlex().
+	//     AddItem(urlForm, 0, 2, true).
+	//     AddItem(buttonPanel, 0, 1, false)
 
 	detailsForm = tview.NewForm().
 		AddDropDown("Method", []string{"GET", "POST", "PUT", "DELETE"}, 0, nil).
@@ -172,17 +173,25 @@ func main() {
 
 	logMessage(logView, "Log window initialized!")
 
-	grid := tview.NewGrid().
-		SetRows(3, 0, 6).
-		// 4 units for top row, dynamic size for middle row, 6 units for bottom
-		SetColumns(35, 0, 30). // Adjust sizes based on your preference
-		SetBorders(true).
-		AddItem(urlForm, 0, 0, 1, 2, 0, 0, true).      // URL form spanning 2 columns
-		AddItem(form, 0, 2, 1, 1, 0, 0, false).        // Main form (buttons) on the right
-		AddItem(detailsForm, 1, 0, 1, 1, 0, 0, false). // Details form in the left
-		AddItem(textView, 1, 1, 1, 2, 0, 0, false).    // Spanning 2 columns for the textView
-		AddItem(logView, 2, 0, 1, 3, 0, 0, false)      // Spanning 3 columns for the logViewi
-	isVisible := false
+	// grid := tview.NewGrid().
+	// 	SetRows(3, 0, 6).
+	// 	// 4 units for top row, dynamic size for middle row, 6 units for bottom
+	// 	SetColumns(35, 0, 30). // Adjust sizes based on your preference
+	// 	SetBorders(true).
+	// 	AddItem(urlForm, 0, 0, 1, 2, 0, 0, true).      // URL form spanning 2 columns
+	// 	AddItem(form, 0, 2, 1, 1, 0, 0, false).        // Main form (buttons) on the right
+	// 	AddItem(detailsForm, 1, 0, 1, 1, 0, 0, false). // Details form in the left
+	// 	AddItem(textView, 1, 1, 1, 2, 0, 0, false)     // Spanning 2 columns for the textView
+	// 	//		AddItem(logView, 2, 0, 1, 3, 0, 0, false)      // Spanning 3 columns for the logViewi
+	grid := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(urlForm, 3, 1, true).
+		AddItem(tview.NewFlex().
+			AddItem(detailsForm, 35, 1, false).
+			AddItem(textView, 0, 1, false).
+			AddItem(form, 30, 1, false),
+			0, 1, false,
+		)
 	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// Log the captured key to logView
 		logMessage(
@@ -198,13 +207,12 @@ func main() {
 			if isVisible {
 				grid.RemoveItem(logView) // Remove logView from grid
 			} else {
-				grid.AddItem(logView, 2, 0, 1, 3, 0, 0, false) // Add logView to grid
+				grid.AddItem(logView, 6, 1, false) // Add logView to grid
 			}
 			isVisible = !isVisible
 			app.Draw() // Refresh the UI
 			return event
 		}
-
 		// Check if Tab is pressed
 		if event.Key() == tcell.KeyTab {
 			// If Shift modifier is present
