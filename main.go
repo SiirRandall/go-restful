@@ -44,42 +44,42 @@ func (stv *ScrollTextView) Draw(screen tcell.Screen) {
 		// Scrollbar position
 		scrollbarX := x + width - 1
 
-		// Draw the scrollbar background
-		for i := 1; i < height-1; i++ { // Start and end one line inside to account for arrows
+		// Draw the scrollbar background in mid-gray
+		for i := 1; i < height-1; i++ {
 			screen.SetContent(
 				scrollbarX,
 				y+i,
-				' ',
+				'▒',
 				nil,
-				tcell.StyleDefault.Background(tcell.ColorDarkGrey),
+				tcell.StyleDefault.Foreground(tcell.ColorGray).Background(tcell.ColorBlack),
 			)
 		}
 
-		// Draw the scrollbar thumb
+		// Draw the scrollbar thumb in bright white
 		for i := 0; i < scrollbarHeight; i++ {
 			screen.SetContent(
 				scrollbarX,
 				y+scrollbarY+i,
-				' ',
+				'█',
 				nil,
-				tcell.StyleDefault.Background(tcell.ColorWhite),
+				tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack),
 			)
 		}
 
-		// Draw arrows using Unicode
+		// Draw simple triangle arrows in bright white
 		screen.SetContent(
 			scrollbarX,
 			y,
-			'↑',
+			'▲',
 			nil,
-			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDarkGrey),
+			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack),
 		)
 		screen.SetContent(
 			scrollbarX,
 			y+height-1,
-			'↓',
+			'▼',
 			nil,
-			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorDarkGrey),
+			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack),
 		)
 	}
 }
