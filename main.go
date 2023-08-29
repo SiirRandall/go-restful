@@ -136,87 +136,7 @@ func main() {
 
 	buttonPanel := tview.NewForm().
 		AddButton("Send", func() {
-			url := urlForm.GetFormItem(0).(*tview.InputField).GetText()
-			_, methodText := detailsForm.GetFormItem(0).(*tview.DropDown).GetCurrentOption()
-			headers := detailsForm.GetFormItem(1).(*tview.InputField).GetText() // For now, this is a simple string; you might want to split headers by line and then by ": " to get a map of header names to values.
-			requestBody := detailsForm.GetFormItem(2).(*tview.InputField).GetText()
-
-			logMessage(logView, fmt.Sprintf("Using method: %s", methodText))
-			logMessage(logView, fmt.Sprintf("Headers: %s", headers))
-			logMessage(logView, fmt.Sprintf("Body: %s", requestBody))
-
-			detailsView.SetText(
-				fmt.Sprintf("Method: %s\nHeaders: %s\nBody: %s", methodText, headers, requestBody),
-			)
-
-			req := fasthttp.AcquireRequest()
-			resp := fasthttp.AcquireResponse()
-			defer fasthttp.ReleaseRequest(req)
-			defer fasthttp.ReleaseResponse(resp)
-
-			req.SetRequestURI(url)
-			req.Header.SetMethod(methodText)
-			// For the sake of simplicity, I won't set headers here. You can parse the headers string and set them using req.Header.Set().
-			req.SetBodyString(requestBody)
-
-			headersInput := detailsForm.GetFormItem(1).(*tview.InputField).GetText()
-			headerLines := strings.Split(headersInput, "\n")
-
-			for _, line := range headerLines {
-				parts := strings.SplitN(line, ": ", 2)
-				if len(parts) == 2 {
-					headerName := parts[0]
-					headerValue := parts[1]
-					req.Header.Set(headerName, headerValue)
-				}
-			}
-
-			err := fasthttp.Do(req, resp)
-			if err != nil {
-				logMessage(
-					logView,
-					fmt.Sprintf("Error making %s request to URL: %v", methodText, err),
-				)
-				return
-			}
-
-			statusCode, body, err := fasthttp.Get(nil, url)
-			if err != nil {
-				logMessage(logView, fmt.Sprintf("Error fetching URL: %v", err))
-				return
-			}
-			textView.SetText(string(body)) // Convert the byte slice to a string
-
-			rawJSONResponse := string(body)
-			textView.SetText(rawJSONResponse)
-
-			if statusCode != fasthttp.StatusOK && statusCode != fasthttp.StatusCreated {
-				// StatusCreated (201) is also a success status for POST requests
-				return
-			}
-			// var jsonData map[string]interface{} // Using a map to get a structured response
-			// err = json.Unmarshal(body, &jsonData)
-			// if err != nil {
-			// 	textView.SetText(fmt.Sprintf("Error parsing JSON: %v", err))
-			// 	return
-			// }
-			body = resp.Body()
-			var jsonData1 interface{}
-			err = json.Unmarshal(body, &jsonData1)
-			if err != nil {
-				textView.SetText(fmt.Sprintf("Error parsing JSON: %v", err))
-				textView.SetText(string(body))
-				return
-			}
-
-			textView.SetText(string(body))
-
-			//			prettyJSON, _ := json.MarshalIndent(jsonData1, "", "    ")
-
-			structure := visualizeJSONStructure(jsonData1, "")
-			textView.SetText(structure)
-			// rawBody := resp.Body()                                            // Get the body
-			//	logMessage(logView, fmt.Sprintf("Raw Body: %s", string(rawBody))) // Log the body
+			sendAction(urlForm, detailsForm, logView, textView, detailsView)
 		}).
 		AddButton("Quit", func() {
 			app.Stop()
@@ -252,6 +172,14 @@ func main() {
 			return action, event
 		},
 	)
+
+	urlField := urlForm.GetFormItem(0).(*tview.InputField)
+	urlField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEnter {
+			sendAction(urlForm, detailsForm, logView, textView, detailsView)
+		}
+		return event
+	})
 
 	// Input capture for textView
 
@@ -374,6 +302,9 @@ func visualizeJSONStructure(data interface{}, indent string) string {
 		case string:
 			return fmt.Sprintf("[orange]\"%s\"[white]", t)
 		case float64:
+			if t == float64(int(t)) {
+				return fmt.Sprintf("[red]%d[white]", int(t))
+			}
 			return fmt.Sprintf("[green]%f[white]", t)
 		case int, int32, int64:
 			return fmt.Sprintf("[red]%d[white]", t)
@@ -390,4 +321,94 @@ func logMessage(logView *tview.TextView, msg string) {
 
 func getTimeStamp() string {
 	return time.Now().Format("15:04:05")
+}
+
+func sendAction(
+	urlForm *tview.Form,
+	detailsForm *tview.Form,
+	logView *tview.TextView,
+	textView *ScrollTextView,
+	detailsView *tview.TextView,
+) {
+	url := urlForm.GetFormItem(0).(*tview.InputField).GetText()
+	_, methodText := detailsForm.GetFormItem(0).(*tview.DropDown).GetCurrentOption()
+	headers := detailsForm.GetFormItem(1).(*tview.InputField).GetText()
+	requestBody := detailsForm.GetFormItem(2).(*tview.InputField).GetText()
+
+	logMessage(logView, fmt.Sprintf("Using method: %s", methodText))
+	logMessage(logView, fmt.Sprintf("Headers: %s", headers))
+	logMessage(logView, fmt.Sprintf("Body: %s", requestBody))
+
+	detailsView.SetText(
+		fmt.Sprintf("Method: %s\nHeaders: %s\nBody: %s", methodText, headers, requestBody),
+	)
+
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.SetRequestURI(url)
+	req.Header.SetMethod(methodText)
+	// For the sake of simplicity, I won't set headers here. You can parse the headers string and set them using req.Header.Set().
+	req.SetBodyString(requestBody)
+
+	headersInput := detailsForm.GetFormItem(1).(*tview.InputField).GetText()
+	headerLines := strings.Split(headersInput, "\n")
+
+	for _, line := range headerLines {
+		parts := strings.SplitN(line, ": ", 2)
+		if len(parts) == 2 {
+			headerName := parts[0]
+			headerValue := parts[1]
+			req.Header.Set(headerName, headerValue)
+		}
+	}
+
+	err := fasthttp.Do(req, resp)
+	if err != nil {
+		logMessage(
+			logView,
+			fmt.Sprintf("Error making %s request to URL: %v", methodText, err),
+		)
+		return
+	}
+
+	statusCode, body, err := fasthttp.Get(nil, url)
+	if err != nil {
+		logMessage(logView, fmt.Sprintf("Error fetching URL: %v", err))
+		return
+	}
+	textView.SetText(string(body)) // Convert the byte slice to a string
+
+	rawJSONResponse := string(body)
+	textView.SetText(rawJSONResponse)
+
+	if statusCode != fasthttp.StatusOK && statusCode != fasthttp.StatusCreated {
+		// StatusCreated (201) is also a success status for POST requests
+		return
+	}
+	// var jsonData map[string]interface{} // Using a map to get a structured response
+	// err = json.Unmarshal(body, &jsonData)
+	// if err != nil {
+	// 	textView.SetText(fmt.Sprintf("Error parsing JSON: %v", err))
+	// 	return
+	// }
+	body = resp.Body()
+	var jsonData1 interface{}
+	err = json.Unmarshal(body, &jsonData1)
+	if err != nil {
+		textView.SetText(fmt.Sprintf("Error parsing JSON: %v", err))
+		textView.SetText(string(body))
+		return
+	}
+
+	textView.SetText(string(body))
+
+	//			prettyJSON, _ := json.MarshalIndent(jsonData1, "", "    ")
+
+	structure := visualizeJSONStructure(jsonData1, "")
+	textView.SetText(structure)
+	// rawBody := resp.Body()                                            // Get the body
+	//	logMessage(logView, fmt.Sprintf("Raw Body: %s", string(rawBody))) // Log the body
 }
