@@ -96,16 +96,6 @@ func max(a, b int) int {
 func main() {
 	app := tview.NewApplication()
 
-	// Initialize the textView.
-	// textView := tview.NewTextView()
-	// textView.SetDynamicColors(true)
-	// textView.SetBorder(true)
-	// textView.SetTitle("JSON Viewer")
-	// textView.SetScrollable(true)
-	// textView.SetBorderPadding(0, 0, 1, 1)
-	// textView.SetScrollBar(true)
-	// Initialize the logView.
-
 	textView := NewScrollTextView()
 	textView.SetDynamicColors(true)
 	textView.SetBorder(true)
@@ -134,16 +124,16 @@ func main() {
 
 	app.EnableMouse(true)
 
+	methodbox := tview.NewForm().
+		AddDropDown("", []string{"GET", "POST", "PUT", "DELETE"}, 0, nil)
+
 	buttonPanel := tview.NewForm().
 		AddButton("Send", func() {
-			sendAction(urlForm, detailsForm, logView, textView, detailsView)
+			sendAction(urlForm, detailsForm, logView, textView, detailsView, methodbox)
 		}).
 		AddButton("Quit", func() {
 			app.Stop()
 		})
-
-	methodbox := tview.NewForm().
-		AddDropDown("", []string{"GET", "POST", "PUT", "DELETE"}, 0, nil)
 
 	urlAndButtons := tview.NewFlex().
 		AddItem(methodbox, 9, 1, false).
@@ -151,16 +141,12 @@ func main() {
 		AddItem(buttonPanel, 0, 1, false)
 
 	detailsForm = tview.NewForm().
-		AddDropDown("Method", []string{"GET", "POST", "PUT", "DELETE"}, 0, nil).
 		AddInputField("Headers", "", 50, nil, nil).
 		AddInputField("Body", "", 50, nil, nil)
 	detailsForm.SetBorder(true).SetTitle("Request Details")
-	// Initialize the form after logView, so we can use logView in the button's function.
+
 	form = tview.NewForm()
 	form.SetBorder(true).SetTitle("Details")
-	// /	AddInputField("URL", "https://jsonplaceholder.typicode.com/posts", 100, nil, nil).
-
-	// Create two new input fields for the `Headers` and `Body`.
 
 	textView.SetMouseCapture(
 		func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
@@ -176,7 +162,7 @@ func main() {
 	urlField := urlForm.GetFormItem(0).(*tview.InputField)
 	urlField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEnter {
-			sendAction(urlForm, detailsForm, logView, textView, detailsView)
+			sendAction(urlForm, detailsForm, logView, textView, detailsView, methodbox)
 		}
 		return event
 	})
@@ -185,19 +171,8 @@ func main() {
 
 	logMessage(logView, "Log window initialized!")
 
-	// grid := tview.NewGrid().
-	// 	SetRows(3, 0, 6).
-	// 	// 4 units for top row, dynamic size for middle row, 6 units for bottom
-	// 	SetColumns(35, 0, 30). // Adjust sizes based on your preference
-	// 	SetBorders(true).
-	// 	AddItem(urlForm, 0, 0, 1, 2, 0, 0, true).      // URL form spanning 2 columns
-	// 	AddItem(form, 0, 2, 1, 1, 0, 0, false).        // Main form (buttons) on the right
-	// 	AddItem(detailsForm, 1, 0, 1, 1, 0, 0, false). // Details form in the left
-	// 	AddItem(textView, 1, 1, 1, 2, 0, 0, false)     // Spanning 2 columns for the textView
-	// 	//		AddItem(logView, 2, 0, 1, 3, 0, 0, false)      // Spanning 3 columns for the logViewi
 	grid := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		//		AddItem(urlForm, 3, 1, true).
 		AddItem(urlAndButtons, 3, 1, true).
 		AddItem(tview.NewFlex().
 			AddItem(detailsForm, 35, 1, false).
@@ -329,11 +304,12 @@ func sendAction(
 	logView *tview.TextView,
 	textView *ScrollTextView,
 	detailsView *tview.TextView,
+	methodbox *tview.Form,
 ) {
 	url := urlForm.GetFormItem(0).(*tview.InputField).GetText()
-	_, methodText := detailsForm.GetFormItem(0).(*tview.DropDown).GetCurrentOption()
-	headers := detailsForm.GetFormItem(1).(*tview.InputField).GetText()
-	requestBody := detailsForm.GetFormItem(2).(*tview.InputField).GetText()
+	_, methodText := methodbox.GetFormItem(0).(*tview.DropDown).GetCurrentOption()
+	headers := detailsForm.GetFormItem(0).(*tview.InputField).GetText()
+	requestBody := detailsForm.GetFormItem(1).(*tview.InputField).GetText()
 
 	logMessage(logView, fmt.Sprintf("Using method: %s", methodText))
 	logMessage(logView, fmt.Sprintf("Headers: %s", headers))
@@ -388,12 +364,7 @@ func sendAction(
 		// StatusCreated (201) is also a success status for POST requests
 		return
 	}
-	// var jsonData map[string]interface{} // Using a map to get a structured response
-	// err = json.Unmarshal(body, &jsonData)
-	// if err != nil {
-	// 	textView.SetText(fmt.Sprintf("Error parsing JSON: %v", err))
-	// 	return
-	// }
+
 	body = resp.Body()
 	var jsonData1 interface{}
 	err = json.Unmarshal(body, &jsonData1)
@@ -409,6 +380,12 @@ func sendAction(
 
 	structure := visualizeJSONStructure(jsonData1, "")
 	textView.SetText(structure)
+	limitLines := countLines(structure)
+	textView.SetMaxLines(limitLines + 1)
 	// rawBody := resp.Body()                                            // Get the body
 	//	logMessage(logView, fmt.Sprintf("Raw Body: %s", string(rawBody))) // Log the body
+}
+
+func countLines(text string) int {
+	return len(strings.Split(text, "\n"))
 }
