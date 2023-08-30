@@ -19,78 +19,10 @@ type ScrollTextView struct {
 	*tview.TextView
 }
 
-func NewScrollTextView() *ScrollTextView {
-	tv := tview.NewTextView()
-	tv.SetScrollable(true)
-	return &ScrollTextView{tv}
-}
-
-func (stv *ScrollTextView) Draw(screen tcell.Screen) {
-	stv.TextView.Draw(screen)
-
-	x, y, width, height := stv.GetInnerRect()
-	totalRows := strings.Count(stv.GetText(true), "\n")
-
-	if totalRows > height {
-		scrollPosition, _ := stv.GetScrollOffset()
-		percentageScrolled := float64(scrollPosition) / float64(totalRows-height+1)
-		scrollbarHeight := max(
-			1,
-			int(float64(height-2)*(float64(height-2)/float64(totalRows))),
-		) // -2 to account for arrows
-		scrollbarY := 1 + int(
-			percentageScrolled*float64(height-2-scrollbarHeight),
-		) // +1 to start below the up arrow
-
-		// Scrollbar position
-		scrollbarX := x + width - 1
-
-		// Draw the scrollbar background in mid-gray
-		for i := 1; i < height-1; i++ {
-			screen.SetContent(
-				scrollbarX,
-				y+i,
-				'▒',
-				nil,
-				tcell.StyleDefault.Foreground(tcell.ColorGray).Background(tcell.ColorBlack),
-			)
-		}
-
-		// Draw the scrollbar thumb in bright white
-		for i := 0; i < scrollbarHeight; i++ {
-			screen.SetContent(
-				scrollbarX,
-				y+scrollbarY+i,
-				'█',
-				nil,
-				tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack),
-			)
-		}
-
-		// Draw simple triangle arrows in bright white
-		screen.SetContent(
-			scrollbarX,
-			y,
-			'▲',
-			nil,
-			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack),
-		)
-		screen.SetContent(
-			scrollbarX,
-			y+height-1,
-			'▼',
-			nil,
-			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack),
-		)
-	}
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
+var (
+	isProgrammaticUpdate bool
+	updateTimer          *time.Timer
+)
 
 func main() {
 	var form *tview.Form
@@ -105,6 +37,7 @@ func main() {
 	paramsIndex := 1
 
 	paramsForm := tview.NewForm()
+	logView := tview.NewTextView()
 
 	urlForm := tview.NewForm().
 		// AddInputField("URL", "https://hltb-proxy.fly.dev/v1/query?title=Edna", 100, nil, nil)
@@ -114,8 +47,18 @@ func main() {
 	urlInput := urlForm.GetFormItem(0).(*tview.InputField)
 	urlInput.SetChangedFunc(func(text string) {
 		updateParamsFromURL(urlForm, paramsForm)
+		logMessage(logView, fmt.Sprintf("URL changed: %s", text))
 	})
-
+	// urlInput.SetChangedFunc(func(text string) {
+	// 	if updateTimer != nil {
+	// 		updateTimer.Stop()
+	// 	}
+	// 	updateTimer = time.AfterFunc(100*time.Millisecond, func() {
+	// 		app.QueueUpdateDraw(func() {
+	// 			updateParamsFromURL(urlForm, paramsForm)
+	// 		})
+	// 	})
+	// })
 	paramsForm.
 		AddInputField("Key 1", "", 50, func(textToCheck string, lastChar rune) bool {
 			updateURLWithParams(urlForm, paramsForm)
@@ -129,7 +72,7 @@ func main() {
 			paramsIndex++
 			addKeyValueFieldsToForm(paramsForm, paramsIndex)
 		})
-  paramsForm.SetBorder(true).SetTitle("[green]Params [white]- Headers - Body - Token")
+	paramsForm.SetBorder(true).SetTitle("[green]Params [white]- Headers - Body - Token")
 
 	headersForm := tview.NewForm().
 		AddInputField("Key 2", "", 50, nil, nil).
@@ -169,7 +112,6 @@ func main() {
 	textView.SetBorder(true)
 	textView.SetTitle("JSON Viewer")
 
-	logView := tview.NewTextView()
 	logView.SetDynamicColors(true)
 	logView.SetScrollable(true)
 	logView.SetBorder(true)
@@ -352,6 +294,112 @@ func visualizeJSONStructure(data interface{}, indent string) string {
 	}
 }
 
+func updateURLWithParams(urlForm, paramsForm *tview.Form) {
+	isProgrammaticUpdate = true
+	defer func() { isProgrammaticUpdate = false }() // Reset the flag after the function completes
+
+	baseURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		// Handle error
+		fmt.Println("Error parsing URL")
+		return
+	}
+
+	// Extract the current query values
+	queryValues := u.Query()
+
+	// Add/modify based on the form's params
+	for i := 0; i < paramsForm.GetFormItemCount()-1; i += 2 { // excluding button
+		keyField := paramsForm.GetFormItem(i).(*tview.InputField)
+		valueField := paramsForm.GetFormItem(i + 1).(*tview.InputField)
+		key := keyField.GetText()
+		value := valueField.GetText()
+
+		// Skip if either key or value is empty
+		if key == "" || value == "" {
+			continue
+		}
+
+		queryValues.Set(key, value) // Set the key-value pair
+	}
+
+	u.RawQuery = queryValues.Encode() // Set the modified query values
+
+	// Update the URL form with the new URL
+	urlForm.GetFormItem(0).(*tview.InputField).SetText(u.String())
+}
+
+func updateParamsFromURL(urlForm, paramsForm *tview.Form) {
+	rawURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		// Handle error
+		return
+	}
+
+	queryValues := u.Query()
+
+	// If the URL is empty, reset the first key-value pair and return
+	if rawURL == "" {
+		paramsForm.GetFormItem(0).(*tview.InputField).SetText("")
+		paramsForm.GetFormItem(1).(*tview.InputField).SetText("")
+		return
+	}
+
+	// Create a map to track which keys from the URL have been processed
+	processedKeys := make(map[string]bool)
+
+	// Iterate over the form items and update the values based on the URL
+	i := 0
+	for i < paramsForm.GetFormItemCount()-1 {
+		keyField := paramsForm.GetFormItem(i).(*tview.InputField)
+		valueField := paramsForm.GetFormItem(i + 1).(*tview.InputField)
+
+		key := keyField.GetText()
+
+		if val, exists := queryValues[key]; exists && len(val) > 0 {
+			valueField.SetText(val[0])
+			processedKeys[key] = true
+			i += 2
+		} else if i == 0 { // If it's the first key-value pair, just clear it
+			keyField.SetText("")
+			valueField.SetText("")
+			i += 2
+		} else {
+			paramsForm.RemoveFormItem(i)
+			paramsForm.RemoveFormItem(i)
+		}
+	}
+
+	// Add any new key-value pairs from the URL that weren't already in the form
+	for key, values := range queryValues {
+		if !processedKeys[key] {
+			paramsForm.AddInputField("Key", key, 50, func(textToCheck string, lastChar rune) bool {
+				updateURLWithParams(urlForm, paramsForm)
+				return true
+			}, nil)
+			paramsForm.AddInputField(
+				"Value",
+				values[0],
+				50,
+				func(textToCheck string, lastChar rune) bool {
+					updateURLWithParams(urlForm, paramsForm)
+					return true
+				},
+				nil,
+			)
+		}
+	}
+
+	// Ensure the "Add More Params" button is present
+	if paramsForm.GetFormItemCount()%2 == 0 {
+		paramsForm.AddButton("Add More Params", func() {
+			addKeyValueFieldsToForm(paramsForm, paramsForm.GetFormItemCount()/2)
+		})
+	}
+}
+
 func logMessage(logView *tview.TextView, msg string) {
 	fmt.Fprintf(logView, "[::b]%s[::-]: %s\n", getTimeStamp(), msg)
 	logView.ScrollToEnd() // Automatically scroll to the latest log
@@ -473,6 +521,89 @@ func addKeyValueFieldsToForm(form *tview.Form, index int) {
 		AddInputField(fmt.Sprintf("Value %d", index), "", 50, nil, nil)
 }
 
+// remeber to remove
+
+func NewScrollTextView() *ScrollTextView {
+	tv := tview.NewTextView()
+	tv.SetScrollable(true)
+	return &ScrollTextView{tv}
+}
+
+func (stv *ScrollTextView) Draw(screen tcell.Screen) {
+	stv.TextView.Draw(screen)
+
+	x, y, width, height := stv.GetInnerRect()
+	totalRows := strings.Count(stv.GetText(true), "\n")
+
+	if totalRows > height {
+		scrollPosition, _ := stv.GetScrollOffset()
+		percentageScrolled := float64(scrollPosition) / float64(totalRows-height+1)
+		scrollbarHeight := max(
+			1,
+			int(float64(height-2)*(float64(height-2)/float64(totalRows))),
+		) // -2 to account for arrows
+		scrollbarY := 1 + int(
+			percentageScrolled*float64(height-2-scrollbarHeight),
+		) // +1 to start below the up arrow
+
+		// Scrollbar position
+		scrollbarX := x + width - 1
+
+		// Draw the scrollbar background in mid-gray
+		for i := 1; i < height-1; i++ {
+			screen.SetContent(
+				scrollbarX,
+				y+i,
+				'▒',
+				nil,
+				tcell.StyleDefault.Foreground(tcell.ColorGray).Background(tcell.ColorBlack),
+			)
+		}
+
+		// Draw the scrollbar thumb in bright white
+		for i := 0; i < scrollbarHeight; i++ {
+			screen.SetContent(
+				scrollbarX,
+				y+scrollbarY+i,
+				'█',
+				nil,
+				tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack),
+			)
+		}
+
+		// Draw simple triangle arrows in bright white
+		screen.SetContent(
+			scrollbarX,
+			y,
+			'▲',
+			nil,
+			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack),
+		)
+		screen.SetContent(
+			scrollbarX,
+			y+height-1,
+			'▼',
+			nil,
+			tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack),
+		)
+	}
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// currentParamsIndex := paramsForm.GetFormItemCount() / 2
+
+// Add back the "Add More Params" button
+// paramsForm.AddButton("Add More Params", func() {
+// 	addKeyValueFieldsToForm(paramsForm, currentParamsIndex)
+// })
+//}
+
 // func updateURLWithParams(urlForm, paramsForm *tview.Form) {
 // 	baseURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
 // 	_, err := url.Parse(baseURL)
@@ -496,68 +627,3 @@ func addKeyValueFieldsToForm(form *tview.Form, index int) {
 // 	}
 // 	urlForm.GetFormItem(0).(*tview.InputField).SetText(baseURL)
 // }
-
-func updateURLWithParams(urlForm, paramsForm *tview.Form) {
-	baseURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
-	u, err := url.Parse(baseURL)
-	if err != nil {
-		// Handle error
-		return
-	}
-
-	// Extract the current query values
-	queryValues := u.Query()
-
-	// Add/modify based on the form's params
-	for i := 0; i < paramsForm.GetFormItemCount()-1; i += 2 { // excluding button
-		keyField := paramsForm.GetFormItem(i).(*tview.InputField)
-		valueField := paramsForm.GetFormItem(i + 1).(*tview.InputField)
-		key := keyField.GetText()
-		value := valueField.GetText()
-		if key != "" && value != "" {
-			queryValues.Set(key, value) // Set the key-value pair
-		}
-	}
-
-	u.RawQuery = queryValues.Encode() // Set the modified query values
-
-	// Update the URL form with the new URL
-	urlForm.GetFormItem(0).(*tview.InputField).SetText(u.String())
-}
-
-func updateParamsFromURL(urlForm, paramsForm *tview.Form) {
-	rawURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		// Handle error
-		return
-	}
-
-	queryValues := u.Query()
-
-	for key, values := range queryValues {
-		// For simplicity, only the first value for each key is considered
-		value := values[0]
-		paramsForm.AddInputField("Key", key, 50, nil, nil)
-		paramsForm.AddInputField("Value", value, 50, nil, nil)
-	}
-
-	// Check if there's only one key-value pair in the form
-	if paramsForm.GetFormItemCount()/2 == 1 {
-		return // Do not modify the paramsForm if only one pair is present
-	}
-
-	// Reset the params form
-	itemCount := paramsForm.GetFormItemCount()
-	for i := 0; i < itemCount-1; i += 2 { // excluding button
-		paramsForm.RemoveFormItem(0)
-		paramsForm.RemoveFormItem(0)
-	}
-
-	// currentParamsIndex := paramsForm.GetFormItemCount() / 2
-
-	// Add back the "Add More Params" button
-	// paramsForm.AddButton("Add More Params", func() {
-	// 	addKeyValueFieldsToForm(paramsForm, currentParamsIndex)
-	// })
-}
