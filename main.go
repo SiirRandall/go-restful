@@ -91,10 +91,54 @@ func max(a, b int) int {
 	return b
 }
 
-// ... rest of your code ...
-
 func main() {
+	var form *tview.Form
+	var detailsForm *tview.Form
+	isVisible := false
+	requestsPageNames := []string{"Params", "Headers", "Body", "Token"}
+	currentPageIndex := 0
+
+	//	logVisible := false
 	app := tview.NewApplication()
+
+	paramsForm := tview.NewForm().
+		AddInputField("Key 1", "", 50, nil, nil).
+		AddInputField("Value", "", 50, nil, nil)
+	paramsForm.SetBorder(true).
+		SetTitle("[green]Params [white]- Headers - [white]Body - [white]Token")
+
+	headersForm := tview.NewForm().
+		AddInputField("Key 2", "", 50, nil, nil).
+		AddInputField("Value", "", 50, nil, nil)
+	headersForm.SetBorder(true).
+		SetTitle("[white]Params - [green]Headers [white]- Body - [white]Token")
+
+	bodyForm := tview.NewForm().
+		AddTextArea("Body", "", 50, 10, 0, func(text string) {}).
+		AddInputField("Key 3", "", 50, nil, nil).
+		AddInputField("Value", "", 50, nil, nil)
+	bodyForm.SetBorder(true).
+		SetTitle("[white]Params - [white]Headers - [green]Body [white]- Token")
+
+	tokenForm := tview.NewForm().
+		AddInputField("Key 4", "", 50, nil, nil).
+		AddInputField("Value", "", 50, nil, nil)
+	tokenForm.SetBorder(true).
+		SetTitle("[white]Params - [white]Headers - [white]Body - [green]Token")
+
+	htmlPages := tview.NewPages().
+		AddPage("Params", paramsForm, true, true).
+		AddPage("Headers", headersForm, true, false).
+		AddPage("Body", bodyForm, true, false).
+		AddPage("Token", tokenForm, true, false)
+
+	htmlPages.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyTab {
+			currentPageIndex = (currentPageIndex + 1) % len(requestsPageNames)
+			htmlPages.SwitchToPage(requestsPageNames[currentPageIndex])
+		}
+		return event
+	})
 
 	textView := NewScrollTextView()
 	textView.SetDynamicColors(true)
@@ -117,11 +161,6 @@ func main() {
 		AddInputField("URL", "https://jsonplaceholder.typicode.com/posts", 100, nil, nil)
 	urlForm.SetBorder(false).SetTitle("URL")
 
-	var form *tview.Form
-	var detailsForm *tview.Form
-	isVisible := false
-	//	logVisible := false
-
 	app.EnableMouse(true)
 
 	methodbox := tview.NewForm().
@@ -130,6 +169,7 @@ func main() {
 	buttonPanel := tview.NewForm().
 		AddButton("Send", func() {
 			sendAction(urlForm, detailsForm, logView, textView, detailsView, methodbox)
+			detailsForm.AddInputField("Test", "", 50, nil, nil)
 		}).
 		AddButton("Quit", func() {
 			app.Stop()
@@ -163,6 +203,9 @@ func main() {
 	urlField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEnter {
 			sendAction(urlForm, detailsForm, logView, textView, detailsView, methodbox)
+			detailsForm.AddInputField("Test", "", 50, nil, nil)
+			a := detailsForm.GetFormItem(0).(*tview.InputField).GetText()
+			detailsForm.GetFormItem(0).(*tview.InputField).SetText("Test" + a)
 		}
 		return event
 	})
@@ -175,7 +218,7 @@ func main() {
 		SetDirection(tview.FlexRow).
 		AddItem(urlAndButtons, 3, 1, true).
 		AddItem(tview.NewFlex().
-			AddItem(detailsForm, 35, 1, false).
+			AddItem(htmlPages, 35, 1, false).
 			AddItem(textView, 0, 1, false).
 			AddItem(form, 30, 1, false),
 			0, 1, false,
@@ -198,7 +241,7 @@ func main() {
 				grid.AddItem(logView, 6, 1, false) // Add logView to grid
 			}
 			isVisible = !isVisible
-			app.Draw() // Refresh the UI
+			// app.Draw() // Refresh the UI
 			return event
 		}
 		// Check if Tab is pressed
@@ -388,4 +431,18 @@ func sendAction(
 
 func countLines(text string) int {
 	return len(strings.Split(text, "\n"))
+}
+
+func getPageContent(text string, linesPerPage, pageNum int) string {
+	lines := strings.Split(text, "\n")
+	startIndex := (pageNum - 1) * linesPerPage
+	endIndex := min(startIndex+linesPerPage, len(lines))
+	return strings.Join(lines[startIndex:endIndex], "\n")
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
