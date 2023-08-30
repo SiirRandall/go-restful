@@ -49,16 +49,7 @@ func main() {
 		updateParamsFromURL(urlForm, paramsForm)
 		logMessage(logView, fmt.Sprintf("URL changed: %s", text))
 	})
-	// urlInput.SetChangedFunc(func(text string) {
-	// 	if updateTimer != nil {
-	// 		updateTimer.Stop()
-	// 	}
-	// 	updateTimer = time.AfterFunc(100*time.Millisecond, func() {
-	// 		app.QueueUpdateDraw(func() {
-	// 			updateParamsFromURL(urlForm, paramsForm)
-	// 		})
-	// 	})
-	// })
+
 	paramsForm.
 		AddInputField("Key 1", "", 50, func(textToCheck string, lastChar rune) bool {
 			updateURLWithParams(urlForm, paramsForm)
@@ -340,63 +331,33 @@ func updateParamsFromURL(urlForm, paramsForm *tview.Form) {
 
 	queryValues := u.Query()
 
-	// If the URL is empty, reset the first key-value pair and return
-	if rawURL == "" {
-		paramsForm.GetFormItem(0).(*tview.InputField).SetText("")
-		paramsForm.GetFormItem(1).(*tview.InputField).SetText("")
-		return
-	}
-
-	// Create a map to track which keys from the URL have been processed
+	// Create a map to track which keys have been processed
 	processedKeys := make(map[string]bool)
 
-	// Iterate over the form items and update the values based on the URL
-	i := 0
-	for i < paramsForm.GetFormItemCount()-1 {
+	// Iterate over the form's key-value pairs
+	for i := 0; i < paramsForm.GetFormItemCount()-1; i += 2 {
 		keyField := paramsForm.GetFormItem(i).(*tview.InputField)
 		valueField := paramsForm.GetFormItem(i + 1).(*tview.InputField)
-
 		key := keyField.GetText()
 
-		if val, exists := queryValues[key]; exists && len(val) > 0 {
-			valueField.SetText(val[0])
+		// If the key exists in the URL's query values, update the value in the form
+		if value, exists := queryValues[key]; exists {
+			valueField.SetText(value[0])
 			processedKeys[key] = true
-			i += 2
-		} else if i == 0 { // If it's the first key-value pair, just clear it
-			keyField.SetText("")
-			valueField.SetText("")
-			i += 2
 		} else {
+			// Otherwise, remove the key-value pair from the form
 			paramsForm.RemoveFormItem(i)
-			paramsForm.RemoveFormItem(i)
+			paramsForm.RemoveFormItem(i) // Adjust for the shift after removing the first item
+			i -= 2                       // Adjust the loop counter
 		}
 	}
 
-	// Add any new key-value pairs from the URL that weren't already in the form
+	// Add any new key-value pairs from the URL to the form
 	for key, values := range queryValues {
 		if !processedKeys[key] {
-			paramsForm.AddInputField("Key", key, 50, func(textToCheck string, lastChar rune) bool {
-				updateURLWithParams(urlForm, paramsForm)
-				return true
-			}, nil)
-			paramsForm.AddInputField(
-				"Value",
-				values[0],
-				50,
-				func(textToCheck string, lastChar rune) bool {
-					updateURLWithParams(urlForm, paramsForm)
-					return true
-				},
-				nil,
-			)
+			paramsForm.AddInputField("Key", key, 50, nil, nil)
+			paramsForm.AddInputField("Value", values[0], 50, nil, nil)
 		}
-	}
-
-	// Ensure the "Add More Params" button is present
-	if paramsForm.GetFormItemCount()%2 == 0 {
-		paramsForm.AddButton("Add More Params", func() {
-			addKeyValueFieldsToForm(paramsForm, paramsForm.GetFormItemCount()/2)
-		})
 	}
 }
 
@@ -594,6 +555,27 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func postProcessParamsForm(paramsForm *tview.Form, queryValues url.Values) {
+	// Clear the form but keep the "Add More Params" button
+	itemCount := paramsForm.GetFormItemCount()
+	for i := 0; i < itemCount-1; i++ {
+		paramsForm.RemoveFormItem(0)
+	}
+
+	// Add key-value pairs from the queryValues
+	for key, values := range queryValues {
+		value := values[0]
+		paramsForm.AddInputField("Key", key, 50, nil, nil)
+		paramsForm.AddInputField("Value", value, 50, nil, nil)
+	}
+
+	// Ensure At Least One Key-Value Pair
+	if paramsForm.GetFormItemCount() == 1 { // Only the "Add More Params" button
+		paramsForm.AddInputField("Key", "", 50, nil, nil)
+		paramsForm.AddInputField("Value", "", 50, nil, nil)
+	}
 }
 
 // currentParamsIndex := paramsForm.GetFormItemCount() / 2
