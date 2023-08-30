@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -101,30 +102,53 @@ func main() {
 	//	logVisible := false
 	app := tview.NewApplication()
 
-	paramsForm := tview.NewForm().
-		AddInputField("Key 1", "", 50, nil, nil).
-		AddInputField("Value", "", 50, nil, nil)
-	paramsForm.SetBorder(true).
-		SetTitle("[green]Params [white]- Headers - [white]Body - [white]Token")
+	paramsIndex := 1
+
+	paramsForm := tview.NewForm()
+
+	urlForm := tview.NewForm().
+		// AddInputField("URL", "https://hltb-proxy.fly.dev/v1/query?title=Edna", 100, nil, nil)
+		AddInputField("URL", "https://jsonplaceholder.typicode.com/posts", 100, nil, nil)
+	urlForm.SetBorder(false).SetTitle("URL")
+
+	urlInput := urlForm.GetFormItem(0).(*tview.InputField)
+	urlInput.SetChangedFunc(func(text string) {
+		updateParamsFromURL(urlForm, paramsForm)
+	})
+
+	paramsForm.
+		AddInputField("Key 1", "", 50, func(textToCheck string, lastChar rune) bool {
+			updateURLWithParams(urlForm, paramsForm)
+			return true
+		}, nil).
+		AddInputField("Value 1", "", 50, func(textToCheck string, lastChar rune) bool {
+			updateURLWithParams(urlForm, paramsForm)
+			return true
+		}, nil).
+		AddButton("Add More Params", func() {
+			paramsIndex++
+			addKeyValueFieldsToForm(paramsForm, paramsIndex)
+		})
+  paramsForm.SetBorder(true).SetTitle("[green]Params [white]- Headers - Body - Token")
 
 	headersForm := tview.NewForm().
 		AddInputField("Key 2", "", 50, nil, nil).
 		AddInputField("Value", "", 50, nil, nil)
 	headersForm.SetBorder(true).
-		SetTitle("[white]Params - [green]Headers [white]- Body - [white]Token")
+		SetTitle("[white]Params - [green]Headers [white]- Body - Token")
 
 	bodyForm := tview.NewForm().
 		AddTextArea("Body", "", 50, 10, 0, func(text string) {}).
 		AddInputField("Key 3", "", 50, nil, nil).
 		AddInputField("Value", "", 50, nil, nil)
 	bodyForm.SetBorder(true).
-		SetTitle("[white]Params - [white]Headers - [green]Body [white]- Token")
+		SetTitle("[white]Params - ]Headers - [green]Body [white]- Token")
 
 	tokenForm := tview.NewForm().
 		AddInputField("Key 4", "", 50, nil, nil).
 		AddInputField("Value", "", 50, nil, nil)
 	tokenForm.SetBorder(true).
-		SetTitle("[white]Params - [white]Headers - [white]Body - [green]Token")
+		SetTitle("[white]Params - Headers - Body - [green]Token")
 
 	htmlPages := tview.NewPages().
 		AddPage("Params", paramsForm, true, true).
@@ -156,10 +180,6 @@ func main() {
 	detailsView.SetScrollable(true)
 	detailsView.SetBorder(false)
 	detailsView.SetTitle("Details")
-
-	urlForm := tview.NewForm().
-		AddInputField("URL", "https://jsonplaceholder.typicode.com/posts", 100, nil, nil)
-	urlForm.SetBorder(false).SetTitle("URL")
 
 	app.EnableMouse(true)
 
@@ -445,4 +465,99 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// This function adds a new pair of input fields for key-value parameters
+func addKeyValueFieldsToForm(form *tview.Form, index int) {
+	form.AddInputField(fmt.Sprintf("Key %d", index), "", 50, nil, nil).
+		AddInputField(fmt.Sprintf("Value %d", index), "", 50, nil, nil)
+}
+
+// func updateURLWithParams(urlForm, paramsForm *tview.Form) {
+// 	baseURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
+// 	_, err := url.Parse(baseURL)
+// 	if err != nil {
+// 		// Handle error
+// 		return
+// 	}
+//
+// 	for i := 0; i < paramsForm.GetFormItemCount()-1; i += 2 { // excluding button
+// 		keyField := paramsForm.GetFormItem(i).(*tview.InputField)
+// 		valueField := paramsForm.GetFormItem(i + 1).(*tview.InputField)
+// 		key := keyField.GetText()
+// 		value := valueField.GetText()
+// 		if key != "" && value != "" {
+// 			separator := "&"
+// 			if i == 0 {
+// 				separator = "?"
+// 			}
+// 			baseURL += separator + key + "=" + value
+// 		}
+// 	}
+// 	urlForm.GetFormItem(0).(*tview.InputField).SetText(baseURL)
+// }
+
+func updateURLWithParams(urlForm, paramsForm *tview.Form) {
+	baseURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		// Handle error
+		return
+	}
+
+	// Extract the current query values
+	queryValues := u.Query()
+
+	// Add/modify based on the form's params
+	for i := 0; i < paramsForm.GetFormItemCount()-1; i += 2 { // excluding button
+		keyField := paramsForm.GetFormItem(i).(*tview.InputField)
+		valueField := paramsForm.GetFormItem(i + 1).(*tview.InputField)
+		key := keyField.GetText()
+		value := valueField.GetText()
+		if key != "" && value != "" {
+			queryValues.Set(key, value) // Set the key-value pair
+		}
+	}
+
+	u.RawQuery = queryValues.Encode() // Set the modified query values
+
+	// Update the URL form with the new URL
+	urlForm.GetFormItem(0).(*tview.InputField).SetText(u.String())
+}
+
+func updateParamsFromURL(urlForm, paramsForm *tview.Form) {
+	rawURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		// Handle error
+		return
+	}
+
+	queryValues := u.Query()
+
+	for key, values := range queryValues {
+		// For simplicity, only the first value for each key is considered
+		value := values[0]
+		paramsForm.AddInputField("Key", key, 50, nil, nil)
+		paramsForm.AddInputField("Value", value, 50, nil, nil)
+	}
+
+	// Check if there's only one key-value pair in the form
+	if paramsForm.GetFormItemCount()/2 == 1 {
+		return // Do not modify the paramsForm if only one pair is present
+	}
+
+	// Reset the params form
+	itemCount := paramsForm.GetFormItemCount()
+	for i := 0; i < itemCount-1; i += 2 { // excluding button
+		paramsForm.RemoveFormItem(0)
+		paramsForm.RemoveFormItem(0)
+	}
+
+	// currentParamsIndex := paramsForm.GetFormItemCount() / 2
+
+	// Add back the "Add More Params" button
+	// paramsForm.AddButton("Add More Params", func() {
+	// 	addKeyValueFieldsToForm(paramsForm, currentParamsIndex)
+	// })
 }
