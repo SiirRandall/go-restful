@@ -32,6 +32,8 @@ var currentParams []Param
 // )
 
 var lastQueryLength int // keep track of the last number of query parameters
+const JSON_VIEW_WIDTH = 50
+
 // vat indexq int = 0
 
 func main() {
@@ -123,6 +125,7 @@ func main() {
 	textView.SetDynamicColors(true)
 	textView.SetBorder(true)
 	textView.SetTitle("JSON Viewer")
+	textView.SetWrap(false)
 
 	logView.SetDynamicColors(true)
 	logView.SetScrollable(true)
@@ -243,7 +246,7 @@ func main() {
 	}
 }
 
-func visualizeJSONStructure(data interface{}, indent string) string {
+func visualizeJSONStructure(data interface{}, indent string, jsonwidth int) string {
 	switch v := data.(type) {
 	case map[string]interface{}:
 		b := &bytes.Buffer{}
@@ -257,7 +260,7 @@ func visualizeJSONStructure(data interface{}, indent string) string {
 		sort.Strings(keys) // Sorting the keys
 
 		for i, key := range keys {
-			valueStr := visualizeJSONStructure(v[key], indent+"  ")
+			valueStr := visualizeJSONStructure(v[key], indent+"  ", jsonwidth)
 			comma := ","
 			if i == len(keys)-1 {
 				comma = "" // No comma for the last key
@@ -273,7 +276,7 @@ func visualizeJSONStructure(data interface{}, indent string) string {
 		fmt.Fprintf(b, "[\n")
 
 		for i, item := range v {
-			itemStr := visualizeJSONStructure(item, indent+"  ")
+			itemStr := visualizeJSONStructure(item, indent+"  ", jsonwidth)
 			comma := ","
 			if i == len(v)-1 {
 				comma = "" // No comma for the last item
@@ -288,6 +291,14 @@ func visualizeJSONStructure(data interface{}, indent string) string {
 		// Apply custom styles based on the type of the value
 		switch t := data.(type) {
 		case string:
+			// Replace newline characters
+			t = strings.ReplaceAll(t, "\n", "\\n")
+
+			// Word wrap for strings exceeding the JSON view width
+			t = wordWrap(t, jsonwidth-len(indent)-2) // Subtract 2 for quotes
+			// Indent every new line after wrapping
+			t = strings.ReplaceAll(t, "\n", "\n"+indent+"  ")
+
 			return fmt.Sprintf("[orange]\"%s\"[white]", t)
 		case float64:
 			if t == float64(int(t)) {
@@ -300,6 +311,34 @@ func visualizeJSONStructure(data interface{}, indent string) string {
 			return fmt.Sprintf("%v", t)
 		}
 	}
+}
+
+// wordWrap wraps the input text to the given width
+func wordWrap(text string, width int) string {
+	if width <= 0 {
+		return text
+	}
+
+	var buffer bytes.Buffer
+	words := strings.Fields(text)
+
+	if len(words) == 0 {
+		return ""
+	}
+
+	buffer.WriteString(words[0])
+	spaceLeft := width - len(words[0])
+	for _, word := range words[1:] {
+		if len(word)+1 > spaceLeft {
+			buffer.WriteString("\n" + word)
+			spaceLeft = width - len(word)
+		} else {
+			buffer.WriteString(" " + word)
+			spaceLeft -= (1 + len(word))
+		}
+	}
+
+	return buffer.String()
 }
 
 func updateURLWithParams(urlForm, paramsForm *tview.Form, logView *tview.TextView) {
@@ -479,8 +518,8 @@ func sendAction(
 	textView.SetText(string(body))
 
 	//			prettyJSON, _ := json.MarshalIndent(jsonData1, "", "    ")
-
-	structure := visualizeJSONStructure(jsonData1, "")
+	_, _, jsonwidth, _ := textView.GetRect()
+	structure := visualizeJSONStructure(jsonData1, "", jsonwidth-6)
 	textView.SetText(structure)
 	limitLines := countLines(structure)
 	textView.SetMaxLines(limitLines + 1)
