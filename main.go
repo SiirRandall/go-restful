@@ -19,10 +19,20 @@ type ScrollTextView struct {
 	*tview.TextView
 }
 
-var (
-	isProgrammaticUpdate bool
-	updateTimer          *time.Timer
-)
+type Param struct {
+	Key   string
+	Value string
+}
+
+var currentParams []Param
+
+// var (
+// isProgrammaticUpdate bool
+// updateTimer          *time.Timer
+// )
+
+var lastQueryLength int // keep track of the last number of query parameters
+// vat indexq int = 0
 
 func main() {
 	var form *tview.Form
@@ -45,41 +55,52 @@ func main() {
 	urlForm.SetBorder(false).SetTitle("URL")
 
 	urlInput := urlForm.GetFormItem(0).(*tview.InputField)
+
 	urlInput.SetChangedFunc(func(text string) {
-		updateParamsFromURL(urlForm, paramsForm)
-		logMessage(logView, fmt.Sprintf("URL changed: %s", text))
+		urlFocus, _ := urlForm.GetFocusedItemIndex()
+		logMessage(logView, fmt.Sprintf("Url focus: %d", urlFocus))
+		go func() {
+			time.Sleep(time.Millisecond * 50) // Add a short delay
+			app.QueueUpdateDraw(func() {
+				if urlFocus == 0 {
+					updateParamsFromURL(urlForm, paramsForm, logView)
+				}
+			})
+		}()
 	})
 
 	paramsForm.
-		AddInputField("Key 1", "", 50, func(textToCheck string, lastChar rune) bool {
-			updateURLWithParams(urlForm, paramsForm)
+		AddInputField("┌[1]Key ", "", 50, func(textToCheck string, lastChar rune) bool {
+			updateURLWithParams(urlForm, paramsForm, logView)
+			test1, test2 := urlForm.GetFocusedItemIndex()
+			logMessage(logView, fmt.Sprintf("Url focus: %d, %d", test1, test2))
 			return true
 		}, nil).
-		AddInputField("Value 1", "", 50, func(textToCheck string, lastChar rune) bool {
-			updateURLWithParams(urlForm, paramsForm)
+		AddInputField("└[1]Value ", "", 50, func(textToCheck string, lastChar rune) bool {
+			updateURLWithParams(urlForm, paramsForm, logView)
 			return true
 		}, nil).
 		AddButton("Add More Params", func() {
 			paramsIndex++
-			addKeyValueFieldsToForm(paramsForm, paramsIndex)
+			addKeyValueFieldsToForm(paramsForm, urlForm, paramsIndex, logView)
 		})
 	paramsForm.SetBorder(true).SetTitle("[green]Params [white]- Headers - Body - Token")
 
 	headersForm := tview.NewForm().
-		AddInputField("Key 2", "", 50, nil, nil).
+		AddInputField("┌Key:", "", 50, nil, nil).
 		AddInputField("Value", "", 50, nil, nil)
 	headersForm.SetBorder(true).
 		SetTitle("[white]Params - [green]Headers [white]- Body - Token")
 
 	bodyForm := tview.NewForm().
 		AddTextArea("Body", "", 50, 10, 0, func(text string) {}).
-		AddInputField("Key 3", "", 50, nil, nil).
+		AddInputField("┌Key: ", "", 50, nil, nil).
 		AddInputField("Value", "", 50, nil, nil)
 	bodyForm.SetBorder(true).
-		SetTitle("[white]Params - ]Headers - [green]Body [white]- Token")
+		SetTitle("[white]Params - Headers - [green]Body [white]- Token")
 
 	tokenForm := tview.NewForm().
-		AddInputField("Key 4", "", 50, nil, nil).
+		AddInputField("┌Key", "", 50, nil, nil).
 		AddInputField("Value", "", 50, nil, nil)
 	tokenForm.SetBorder(true).
 		SetTitle("[white]Params - Headers - Body - [green]Token")
@@ -122,7 +143,6 @@ func main() {
 	buttonPanel := tview.NewForm().
 		AddButton("Send", func() {
 			sendAction(urlForm, detailsForm, logView, textView, detailsView, methodbox)
-			detailsForm.AddInputField("Test", "", 50, nil, nil)
 		}).
 		AddButton("Quit", func() {
 			app.Stop()
@@ -156,9 +176,6 @@ func main() {
 	urlField.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEnter {
 			sendAction(urlForm, detailsForm, logView, textView, detailsView, methodbox)
-			detailsForm.AddInputField("Test", "", 50, nil, nil)
-			a := detailsForm.GetFormItem(0).(*tview.InputField).GetText()
-			detailsForm.GetFormItem(0).(*tview.InputField).SetText("Test" + a)
 		}
 		return event
 	})
@@ -191,7 +208,7 @@ func main() {
 			if isVisible {
 				grid.RemoveItem(logView) // Remove logView from grid
 			} else {
-				grid.AddItem(logView, 6, 1, false) // Add logView to grid
+				grid.AddItem(logView, 12, 1, false) // Add logView to grid
 			}
 			isVisible = !isVisible
 			// app.Draw() // Refresh the UI
@@ -285,27 +302,25 @@ func visualizeJSONStructure(data interface{}, indent string) string {
 	}
 }
 
-func updateURLWithParams(urlForm, paramsForm *tview.Form) {
-	isProgrammaticUpdate = true
-	defer func() { isProgrammaticUpdate = false }() // Reset the flag after the function completes
-
+func updateURLWithParams(urlForm, paramsForm *tview.Form, logView *tview.TextView) {
 	baseURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		// Handle error
-		fmt.Println("Error parsing URL")
+		logMessage(logView, fmt.Sprintf("Error parsing URL: %v", err))
 		return
 	}
 
 	// Extract the current query values
 	queryValues := u.Query()
-
+	logMessage(logView, fmt.Sprintf("Query values: %v", queryValues))
 	// Add/modify based on the form's params
 	for i := 0; i < paramsForm.GetFormItemCount()-1; i += 2 { // excluding button
 		keyField := paramsForm.GetFormItem(i).(*tview.InputField)
 		valueField := paramsForm.GetFormItem(i + 1).(*tview.InputField)
 		key := keyField.GetText()
 		value := valueField.GetText()
+		logMessage(logView, fmt.Sprintf("Key: %s, Value: %s", key, value))
 
 		// Skip if either key or value is empty
 		if key == "" || value == "" {
@@ -321,44 +336,59 @@ func updateURLWithParams(urlForm, paramsForm *tview.Form) {
 	urlForm.GetFormItem(0).(*tview.InputField).SetText(u.String())
 }
 
-func updateParamsFromURL(urlForm, paramsForm *tview.Form) {
+func updateParamsFromURL(urlForm, paramsForm *tview.Form, logView *tview.TextView) {
 	rawURL := urlForm.GetFormItem(0).(*tview.InputField).GetText()
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		// Handle error
+		logMessage(logView, fmt.Sprintf("Error parsing URL: %v", err))
 		return
 	}
 
 	queryValues := u.Query()
+	currentQueryLength := len(queryValues)
 
-	// Create a map to track which keys have been processed
-	processedKeys := make(map[string]bool)
-
-	// Iterate over the form's key-value pairs
-	for i := 0; i < paramsForm.GetFormItemCount()-1; i += 2 {
-		keyField := paramsForm.GetFormItem(i).(*tview.InputField)
-		valueField := paramsForm.GetFormItem(i + 1).(*tview.InputField)
-		key := keyField.GetText()
-
-		// If the key exists in the URL's query values, update the value in the form
-		if value, exists := queryValues[key]; exists {
-			valueField.SetText(value[0])
-			processedKeys[key] = true
-		} else {
-			// Otherwise, remove the key-value pair from the form
-			paramsForm.RemoveFormItem(i)
-			paramsForm.RemoveFormItem(i) // Adjust for the shift after removing the first item
-			i -= 2                       // Adjust the loop counter
-		}
-	}
-
-	// Add any new key-value pairs from the URL to the form
+	currentIndex := 1
 	for key, values := range queryValues {
-		if !processedKeys[key] {
-			paramsForm.AddInputField("Key", key, 50, nil, nil)
-			paramsForm.AddInputField("Value", values[0], 50, nil, nil)
+		value := values[0] // Only the first value for each key is considered
+
+		if currentIndex <= lastQueryLength || (currentIndex == 1 && lastQueryLength == 0) {
+			// Update the existing fields
+			keyField := paramsForm.GetFormItem((currentIndex - 1) * 2).(*tview.InputField)
+			valueField := paramsForm.GetFormItem((currentIndex-1)*2 + 1).(*tview.InputField)
+
+			keyField.SetLabel(fmt.Sprintf("┌[%d]Key", currentIndex))
+			valueField.SetLabel(fmt.Sprintf("└[%d]Value", currentIndex))
+
+			keyField.SetText(key)
+			valueField.SetText(value)
+		} else if currentQueryLength > 1 {
+			// Add new fields for the additional query parameters
+			paramsForm.AddInputField(
+				fmt.Sprintf("┌[%d]Key", currentIndex),
+				key,
+				50,
+				func(textToCheck string, lastChar rune) bool {
+					updateURLWithParams(urlForm, paramsForm, logView)
+					return true
+				},
+				nil,
+			)
+			paramsForm.AddInputField(fmt.Sprintf("└[%d]Value", currentIndex), value, 50, func(textToCheck string, lastChar rune) bool {
+				updateURLWithParams(urlForm, paramsForm, logView)
+				return true
+			}, nil)
 		}
+
+		currentIndex++
 	}
+
+	for currentIndex <= lastQueryLength {
+		paramsForm.RemoveFormItem((currentIndex - 1) * 2)
+		paramsForm.RemoveFormItem((currentIndex - 1) * 2) // Value
+		currentIndex++
+	}
+
+	lastQueryLength = currentQueryLength
 }
 
 func logMessage(logView *tview.TextView, msg string) {
@@ -477,9 +507,20 @@ func min(a, b int) int {
 }
 
 // This function adds a new pair of input fields for key-value parameters
-func addKeyValueFieldsToForm(form *tview.Form, index int) {
-	form.AddInputField(fmt.Sprintf("Key %d", index), "", 50, nil, nil).
-		AddInputField(fmt.Sprintf("Value %d", index), "", 50, nil, nil)
+
+func addKeyValueFieldsToForm(paramsForm, urlForm *tview.Form, index int, logView *tview.TextView) {
+	keyLabel := fmt.Sprintf("┌Key %d:", index)
+	valueLabel := "└Value:"
+
+	paramsForm.
+		AddInputField(keyLabel, "", 50, func(textToCheck string, lastChar rune) bool {
+			updateURLWithParams(urlForm, paramsForm, logView)
+			return true
+		}, nil).
+		AddInputField(valueLabel, "", 50, func(textToCheck string, lastChar rune) bool {
+			updateURLWithParams(urlForm, paramsForm, logView)
+			return true
+		}, nil)
 }
 
 // remeber to remove
@@ -557,27 +598,28 @@ func max(a, b int) int {
 	return b
 }
 
-func postProcessParamsForm(paramsForm *tview.Form, queryValues url.Values) {
-	// Clear the form but keep the "Add More Params" button
-	itemCount := paramsForm.GetFormItemCount()
-	for i := 0; i < itemCount-1; i++ {
-		paramsForm.RemoveFormItem(0)
-	}
-
-	// Add key-value pairs from the queryValues
-	for key, values := range queryValues {
-		value := values[0]
-		paramsForm.AddInputField("Key", key, 50, nil, nil)
-		paramsForm.AddInputField("Value", value, 50, nil, nil)
-	}
-
-	// Ensure At Least One Key-Value Pair
-	if paramsForm.GetFormItemCount() == 1 { // Only the "Add More Params" button
-		paramsForm.AddInputField("Key", "", 50, nil, nil)
-		paramsForm.AddInputField("Value", "", 50, nil, nil)
-	}
-}
-
+//
+// func postProcessParamsForm(paramsForm *tview.Form, queryValues url.Values) {
+// 	// Clear the form but keep the "Add More Params" button
+// 	itemCount := paramsForm.GetFormItemCount()
+// 	for i := 0; i < itemCount-1; i++ {
+// 		paramsForm.RemoveFormItem(0)
+// 	}
+//
+// 	// Add key-value pairs from the queryValues
+// 	for key, values := range queryValues {
+// 		value := values[0]
+// 		paramsForm.AddInputField("Key", key, 50, nil, nil)
+// 		paramsForm.AddInputField("Value", value, 50, nil, nil)
+// 	}
+//
+// 	// Ensure At Least One Key-Value Pair
+// 	if paramsForm.GetFormItemCount() == 1 { // Only the "Add More Params" button
+// 		paramsForm.AddInputField("Key", "", 50, nil, nil)
+// 		paramsForm.AddInputField("Value", "", 50, nil, nil)
+// 	}
+// }
+//
 // currentParamsIndex := paramsForm.GetFormItemCount() / 2
 
 // Add back the "Add More Params" button
