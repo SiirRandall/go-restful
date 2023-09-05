@@ -47,9 +47,11 @@ func main() {
 	app := tview.NewApplication()
 
 	paramsIndex := 1
+	headersIndex := 2
 
 	paramsForm := tview.NewForm()
 	logView := tview.NewTextView()
+	headersForm := tview.NewForm()
 
 	urlForm := tview.NewForm().
 		// AddInputField("URL", "https://hltb-proxy.fly.dev/v1/query?title=Edna", 100, nil, nil)
@@ -88,11 +90,60 @@ func main() {
 		})
 	paramsForm.SetBorder(true).SetTitle("[green]Params [white]- Headers - Body - Token")
 
-	headersForm := tview.NewForm().
+	// popularHeaders := []string{
+	// 	"Accept",
+	// 	"Authorization",
+	// 	"Content-Type",
+	// 	"User-Agent",
+	// 	"Cache-Control",
+	// }
+
+	// dropdown := tview.NewDropDown().
+	// 	SetOptions(popularHeaders, func(option string, optionIndex int) {
+	// 		keyInput := headersForm.GetFormItem(1).(*tview.InputField)
+	// 		keyInput.SetText(option)
+	// 	})
+
+	headersForm = tview.NewForm().
+		// AddFormItem(dropdown).
 		AddInputField("┌Key:", "", 50, nil, nil).
-		AddInputField("Value", "", 50, nil, nil)
+		AddInputField("└Value", "", 50, nil, nil).
+		AddButton("Add More Headers", func() {
+			// Adjust the headersIndex
+
+			headersForm.AddInputField("┌Key:", "", 50, nil, nil)
+			headersForm.AddInputField("└Value", "", 50, nil, nil)
+			headersForm.AddButton("Delete", func() {})
+			logMessage(logView, fmt.Sprintf("Headers index: %d", headersForm.GetFormItemCount()))
+			// headersForm.RemoveButton(headersIndex+1)
+			headersIndex = headersForm.GetFormItemCount()
+			logMessage(logView, fmt.Sprintf("Headers index: %d", headersIndex))
+			addKeyinput := headersForm.GetFormItem(headersIndex - 2).(*tview.InputField)
+			// headersIndex++
+			addValueinput := headersForm.GetFormItem(headersIndex - 1).(*tview.InputField)
+
+			setAutoCompleteForHeaders(addKeyinput)
+			setAutoCompleteForValues(addValueinput, addKeyinput)
+
+			for i := 0; i < headersForm.GetFormItemCount(); i = i + 2 {
+				key := headersForm.GetFormItem(i).(*tview.InputField).GetText()
+				Value := headersForm.GetFormItem(i + 1).(*tview.InputField).GetText()
+				if key != "" && Value != "" {
+					logMessage(logView, fmt.Sprintf("Index: %d, Key: %s, Value: %s", i, key, Value))
+				}
+			}
+		})
+
 	headersForm.SetBorder(true).
 		SetTitle("[white]Params - [green]Headers [white]- Body - Token")
+
+	// Add the autocomplete function here
+
+	keyInput := headersForm.GetFormItem(0).(*tview.InputField)
+	valueInput := headersForm.GetFormItem(1).(*tview.InputField)
+
+	setAutoCompleteForHeaders(keyInput)
+	setAutoCompleteForValues(valueInput, keyInput)
 
 	bodyForm := tview.NewForm().
 		AddTextArea("Body", "", 50, 10, 0, func(text string) {}).
@@ -117,6 +168,9 @@ func main() {
 		if event.Key() == tcell.KeyTab {
 			currentPageIndex = (currentPageIndex + 1) % len(requestsPageNames)
 			htmlPages.SwitchToPage(requestsPageNames[currentPageIndex])
+		}
+		if htmlPages.HasFocus() {
+			logMessage(logView, fmt.Sprintf("htmlPages has focus"))
 		}
 		return event
 	})
@@ -635,6 +689,44 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+//	func setAutoCompleteForHeaders(input *tview.InputField) {
+//		input.SetAutocompleteFunc(func(currentText string) (entries []string) {
+//			for _, header := range headers {
+//				if strings.HasPrefix(strings.ToLower(header), strings.ToLower(currentText)) {
+//					entries = append(entries, header)
+//				}
+//			}
+//			return
+//		})
+//	}
+func setAutoCompleteForHeaders(input *tview.InputField) {
+	input.SetAutocompleteFunc(func(currentText string) (entries []string) {
+		for _, header := range headers {
+			if strings.HasPrefix(strings.ToLower(header), strings.ToLower(currentText)) {
+				entries = append(entries, header)
+			}
+		}
+		return
+	})
+}
+
+func setAutoCompleteForValues(input *tview.InputField, keyInput *tview.InputField) {
+	input.SetAutocompleteFunc(func(currentText string) (entries []string) {
+		// Get the current value of the key input
+		headerKey := keyInput.GetText()
+
+		// Check if we have predefined values for this header
+		if possibleValues, exists := headerValuesMap[headerKey]; exists {
+			for _, value := range possibleValues {
+				if strings.HasPrefix(strings.ToLower(value), strings.ToLower(currentText)) {
+					entries = append(entries, value)
+				}
+			}
+		}
+		return
+	})
 }
 
 //
