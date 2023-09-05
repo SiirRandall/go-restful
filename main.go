@@ -242,6 +242,15 @@ func main() {
 				logMessage(logView, fmt.Sprintf("Mouse clicked in textView at x: %d, y: %d", x, y))
 				hl := headersForm.GetFormItemCount()
 				logMessage(logView, fmt.Sprintf("Items in headersForm %d", hl))
+				headersfocusitem, headersfocusbutton := headersForm.GetFocusedItemIndex()
+				logMessage(
+					logView,
+					fmt.Sprintf(
+						"headersForm focus item %d fovus button",
+						headersfocusitem,
+						headersfocusbutton,
+					),
+				)
 			}
 			return action, event
 		},
@@ -719,14 +728,41 @@ func max(a, b int) int {
 //			return
 //		})
 //	}
+
 func setAutoCompleteForHeaders(input *tview.InputField) {
+	// By default, do not show all headers
+	showAll := false
+
 	input.SetAutocompleteFunc(func(currentText string) (entries []string) {
+		if showAll {
+			showAll = false
+			return headers
+		} else if currentText == "" {
+			return nil
+		}
+
 		for _, header := range headers {
 			if strings.HasPrefix(strings.ToLower(header), strings.ToLower(currentText)) {
 				entries = append(entries, header)
 			}
 		}
 		return
+	})
+
+	// Input capture to detect the down arrow key
+	input.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyDown && input.GetText() == "" {
+			showAll = true
+			input.Autocomplete() // This should trigger the autocomplete
+
+			// If headers is not empty, set the first header as the current text.
+			if len(headers) > 0 {
+				input.SetText(headers[0])
+			}
+
+			return nil // Consume the event to prevent default behavior
+		}
+		return event
 	})
 }
 
