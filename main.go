@@ -113,7 +113,23 @@ func main() {
 
 			headersForm.AddInputField("┌Key:", "", 50, nil, nil)
 			headersForm.AddInputField("└Value", "", 50, nil, nil)
-			headersForm.AddButton("Delete", func() {})
+			headersForm.AddButton("Delete", func() {
+				headersIndex = headersForm.GetFormItemCount()
+
+				headersForm.RemoveFormItem(headersIndex - 1)
+				headersForm.RemoveFormItem(headersIndex - 2)
+				headersIndex = headersForm.GetFormItemCount()
+				logMessage(logView, fmt.Sprintf("Delete Headers index: %d", headersIndex))
+
+				if headersIndex == 2 {
+					deletebutton := headersForm.GetButtonCount()
+					logMessage(logView, fmt.Sprintf("Delete button index: %d", deletebutton))
+					for i := deletebutton - 1; i >= 1; i-- {
+						headersForm.RemoveButton(i)
+					}
+				}
+			})
+
 			logMessage(logView, fmt.Sprintf("Headers index: %d", headersForm.GetFormItemCount()))
 			// headersForm.RemoveButton(headersIndex+1)
 			headersIndex = headersForm.GetFormItemCount()
@@ -224,6 +240,8 @@ func main() {
 			if buttons := event.Buttons(); buttons&tcell.Button1 != 0 {
 				x, y := event.Position()
 				logMessage(logView, fmt.Sprintf("Mouse clicked in textView at x: %d, y: %d", x, y))
+				hl := headersForm.GetFormItemCount()
+				logMessage(logView, fmt.Sprintf("Items in headersForm %d", hl))
 			}
 			return action, event
 		},
