@@ -1,166 +1,84 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"log"
-	"strings"
-	"time"
 
-	tcell "github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
-	"github.com/valyala/fasthttp"
+	"github.com/rivo/tview" // Importing the tview package for terminal-based UI applications
+
+	"github.com/SiirRandall/go-restful/internal/input" // Importing internal packages for handling inputs
+	"github.com/SiirRandall/go-restful/internal/tui"   // Importing internal packages for text UI creation
 )
 
 func main() {
+	// Initializing our app as a new tview Application.
 	app := tview.NewApplication()
 
-	// Initialize the textView.
-	textView := tview.NewTextView()
-	textView.SetDynamicColors(true)
-	textView.SetBorder(true)
-	textView.SetTitle("JSON Viewer")
-
-	// Initialize the logView.
-
-	logView := tview.NewTextView()
-	logView.SetDynamicColors(true)
-	logView.SetScrollable(true)
-	logView.SetBorder(true)
-	logView.SetTitle("Logs")
-
-	detailsView := tview.NewTextView()
-	detailsView.SetDynamicColors(true)
-	detailsView.SetScrollable(true)
-	detailsView.SetBorder(true)
-	detailsView.SetTitle("Details")
-
-	var form *tview.Form
-
+	// Enabling mouse support in the app.
 	app.EnableMouse(true)
 
-	// Initialize the form after logView, so we can use logView in the button's function.
-	form = tview.NewForm().
-		AddInputField("URL", "https://jsonplaceholder.typicode.com/posts", 100, nil, nil).
-		AddButton("Fetch JSON", func() {
-			url := form.GetFormItem(0).(*tview.InputField).GetText()
-			statusCode, body, err := fasthttp.Get(nil, url)
-			if err != nil {
-				logMessage(logView, fmt.Sprintf("Error fetching URL: %v", err))
-				return
-			}
-			if statusCode != fasthttp.StatusOK {
-				textView.SetText(fmt.Sprintf("API responded with status code: %d", statusCode))
-				return
-			}
+	// Initialize a form that will hold the parameters for HTTP requests.
+	paramsForm := tview.NewForm()
 
-			var jsonData interface{}
-			err = json.Unmarshal(body, &jsonData)
-			if err != nil {
-				textView.SetText(fmt.Sprintf("Error parsing JSON: %v", err))
-				return
-			}
-			structure := visualizeJSONStructure(jsonData, "")
-			textView.SetText(structure)
-		}).
-		AddButton("Quit", func() {
-			app.Stop()
-		})
+	// Initialize the log view which displays all the logs in the application.
+	logView := tui.InitLogView()
 
-	textView.SetMouseCapture(
-		func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
-			// Check if it's a left button click
-			if buttons := event.Buttons(); buttons&tcell.Button1 != 0 {
-				x, y := event.Position()
-				logMessage(logView, fmt.Sprintf("Mouse clicked in textView at x: %d, y: %d", x, y))
-			}
-			return action, event
-		},
+	// Initialize a form that displays details of requests and responses.
+	detailsForm := tui.InitDetailsForm()
+
+	// Initialize URL form which is used to get URL from user.
+	urlForm := tui.InitURLForm(app, paramsForm, logView)
+
+	// Initialize parameter form which is used to get request parameters from user.
+	paramsForm = tui.InitParamsForm(paramsForm, urlForm, logView)
+
+	// Initialize form used to get request headers from user.
+	headersForm := tui.InitHeadersForm(logView)
+
+	// Initialize form used to input the body of an HTTP request.
+	bodyForm := tui.InitBodyForm()
+
+	// Initialize form used to get token for authentication.
+	tokenForm := tui.InitTokenForm()
+
+	// Initialize the pages rendered on HTML.
+	htmlPages := tui.InitHTMLPages(paramsForm, headersForm, bodyForm, tokenForm, logView)
+
+	// Initialises the JSON viewer which shows pretty-printed JSON structures.
+	textView := tui.InitJsonViewer()
+
+	// Initialize a view to display request and response details.
+	detailsView := tui.InitDetailsView()
+
+	// Initialize components related to the URL input & buttons for different actions.
+	methodbox, buttonPanel := tui.InitUrlComponents(
+		app,
+		urlForm,
+		detailsForm,
+		logView,
+		textView,
+		detailsView,
 	)
 
-	// Input capture for textView
-	textView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// Log the captured key to logView
-		logMessage(
-			logView,
-			fmt.Sprintf(
-				"Key captured in textView: %v, Modifiers: %v",
-				event.Key(),
-				event.Modifiers(),
-			),
-		)
+	// Integrates and initializes Url input field and associated action buttons.
+	urlAndButtons := tui.InitUrlandButtons(methodbox, urlForm, buttonPanel)
 
-		// Check if Tab is pressed
+	// Initializes the main grid layout with the elements for displaying http request, response and other details.
+	grid := tui.InitGrid(urlAndButtons, htmlPages, textView, detailsForm)
 
-		if event.Key() == tcell.KeyTab {
-			// If Shift modifier is present
-			if event.Modifiers() == tcell.ModShift {
-				// Set focus on Fetch JSON button
-				item := form.GetFormItem(1)
-				app.SetFocus(item)
-			} else {
-				// Set focus on URL input
-				item := form.GetFormItem(0)
-				app.SetFocus(item)
-			}
-			return nil
-		}
-		return event
-	})
+	// Captures mouse interaction within the TextView component.
+	input.TextViewMouseCapture(logView, textView, headersForm)
 
-	logMessage(logView, "Log window initialized!")
+	// Captures keyboard and mouse input for the URL form.
+	input.UrlInputCapture(logView, urlForm, detailsForm, textView, detailsView, methodbox)
 
-	grid := tview.NewGrid().
-		SetRows(3, 0, 6). // No change here; same rows
-		SetColumns(0, 0). // Split middle pane into two equal columns
-		SetBorders(true).
-		AddItem(form, 0, 0, 1, 2, 0, 0, true). // form spans both columns
-		AddItem(detailsView, 1, 0, 1, 1, 0, 0, false).
-		// detailsView is now in the left column of the middle row
-		AddItem(textView, 1, 1, 1, 1, 0, 0, false).
-		// textView is now in the right column of the middle row
-		AddItem(logView, 2, 0, 1, 2, 0, 0, false) // logView spans both columns
+	// Captures keyboard and mouse input for the TextView.
+	input.TextViewKBCapture(app, textView, logView, detailsForm, grid)
 
+	// Run the application - setting the root element and make it full screen. Exits if there are errors.
 	if err := app.SetRoot(grid, true).Run(); err != nil {
-		log.Fatalf("Failed to run application: %v", err)
+		log.Fatalf(
+			"Failed to run application: %v",
+			err,
+		) // Logs the fatal error and quits the app smoothly.
 	}
-}
-
-func visualizeJSONStructure(data interface{}, indent string) string {
-	switch v := data.(type) {
-	case map[string]interface{}:
-		b := &bytes.Buffer{}
-		fmt.Fprintf(b, "{\n")
-		keys := make([]string, 0, len(v))
-		for key := range v {
-			keys = append(keys, key)
-		}
-		for _, key := range keys {
-			valueStr := visualizeJSONStructure(v[key], indent+"  ")
-			fmt.Fprintf(b, "%s  [blue]%s[white]: %s,\n", indent, key, strings.Trim(valueStr, "\n"))
-		}
-		fmt.Fprintf(b, "%s}", indent)
-		return b.String()
-	case []interface{}:
-		b := &bytes.Buffer{}
-		fmt.Fprintf(b, "[\n")
-		for _, item := range v {
-			itemStr := visualizeJSONStructure(item, indent+"  ")
-			fmt.Fprintf(b, "%s  %s,\n", indent, strings.Trim(itemStr, "\n"))
-		}
-		fmt.Fprintf(b, "%s]", indent)
-		return b.String()
-	default:
-		return fmt.Sprintf("%v", v)
-	}
-}
-
-func logMessage(logView *tview.TextView, msg string) {
-	fmt.Fprintf(logView, "[::b]%s[::-]: %s\n", getTimeStamp(), msg)
-	logView.ScrollToEnd() // Automatically scroll to the latest log
-}
-
-func getTimeStamp() string {
-	return time.Now().Format("15:04:05")
 }
