@@ -1,4 +1,4 @@
-package main
+package tui
 
 var headers = []string{
 	// Most commonly used headers
@@ -103,50 +103,6 @@ var headers = []string{
 	"X-Request-ID",
 	"X-Correlation-ID",
 }
-
-var contentTypes = []string{
-	"application/json",
-	"application/xml",
-	"application/ld+json",
-	"application/xhtml+xml",
-	"application/pdf",
-	"application/msword",
-	"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-	"application/vnd.ms-excel",
-	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-	"application/vnd.ms-powerpoint",
-	"application/vnd.openxmlformats-officedocument.presentationml.presentation",
-	"application/zip",
-	"application/gzip",
-	"application/tar",
-	"application/java-archive",
-	"application/octet-stream",
-	"application/x-www-form-urlencoded",
-	"multipart/form-data",
-	"text/plain",
-	"text/css",
-	"text/csv",
-	"text/html",
-	"text/javascript",
-	"text/xml",
-	"image/jpeg",
-	"image/png",
-	"image/gif",
-	"image/webp",
-	"image/tiff",
-	"image/svg+xml",
-	"video/mp4",
-	"video/x-msvideo",
-	"video/x-ms-wmv",
-	"video/quicktime",
-	"video/ogg",
-	"audio/midi",
-	"audio/mpeg",
-	"audio/ogg",
-	"audio/wav",
-	"audio/webm",
-}
-
 var headerValuesMap = map[string][]string{
 	"A-IM": {"gzip", "compress", "deflate", "identity", "*"},
 	"Accept": {
